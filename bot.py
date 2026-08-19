@@ -41,14 +41,14 @@ bot = commands.Bot(
     help_command=None
 )
 
-@bot.event
-async def on_ready():
+@bot.command(name="sync", description="Sync slash commands")
+@commands.has_permissions(administrator=True)
+async def sync(ctx):
     try:
         synced = await bot.tree.sync()
-        print(f"Logged in as {bot.user} | Synced {len(synced)} slash command(s).")
+        await ctx.send(f"✅ Successfully synced {len(synced)} slash command(s) globally!")
     except Exception as e:
-        print(f"Failed to sync slash commands: {e}")
-
+        await ctx.send(f"❌ Failed to sync commands: `{e}`")
     try:
         bot.add_view(GiveawayEntryView())
         print("Registered GiveawayEntryView for persistent buttons.")
