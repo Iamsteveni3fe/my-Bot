@@ -3888,6 +3888,82 @@ async def welcomer_test(ctx):
         else:
             await ctx.send(err_msg)
 # =========================================================
+# NITRO / BOOST ANNOUNCEMENT SYSTEM (Server Owners Only)
+# =========================================================
+
+@bot.hybrid_command(name="nitro", description="Send a custom server boost / nitro announcement message")
+@app_commands.describe(
+    action="Choose whether to send the live announcement or run a test",
+    channel="The channel to send the message in"
+)
+@app_commands.choices(action=[
+    app_commands.Choice(name="msg", value="msg"),
+    app_commands.Choice(name="test", value="test")
+])
+@commands.has_guild_permissions(administrator=True)
+async def nitro(ctx, action: str, channel: discord.TextChannel = None):
+    # Ensure a channel is provided
+    target_channel = channel or ctx.channel
+
+    # Build the professional Nitro/Boost Embed
+    embed = discord.Embed(
+        title="🎉 NEW SERVER BOOST! 🎉",
+        description=(
+            f"Thank you for supporting **{ctx.guild.name}**! "
+            f"Your boost helps us unlock higher audio quality, more custom emoji slots, and better perks for everyone."
+        ),
+        color=discord.Color.from_rgb(244, 127, 255) # Nitro Pink
+    )
+    embed.set_thumbnail(url=ctx.guild.icon.url if ctx.guild.icon else None)
+    embed.set_footer(text=f"Triggered by {ctx.author}", icon_url=ctx.author.display_avatar.url)
+    embed.timestamp = discord.utils.utcnow()
+
+    # Handle the 'test' action vs live 'msg' action
+    if action == "test":
+        test_embed = discord.Embed(
+            title="🛠️ NITRO MESSAGE TEST PREVIEW",
+            description=f"This is a test preview of the nitro announcement destined for {target_channel.mention}.",
+            color=discord.Color.orange()
+        )
+        test_embed.add_field(name="Target Channel", value=target_channel.mention, inline=False)
+        test_embed.add_field(name="Embed Preview Below:", value="👇", inline=False)
+        
+        if ctx.interaction:
+            await ctx.interaction.response.send_message(embeds=[test_embed, embed], ephemeral=True)
+        else:
+            if ctx.message:
+                try:
+                    await ctx.message.delete()
+                except Exception:
+                    pass
+            await ctx.send(embeds=[test_embed, embed], delete_after=20)
+        return
+
+    # Handle live 'msg' action
+    if action == "msg":
+        try:
+            await target_channel.send(embed=embed)
+            if ctx.interaction:
+                await ctx.interaction.response.send_message(f"✅ Successfully sent the nitro announcement to {target_channel.mention}!", ephemeral=True)
+            else:
+                if ctx.message:
+                    try:
+                        await ctx.message.delete()
+                    except Exception:
+                        pass
+                confirmation = await ctx.send(f"✅ Successfully sent to {target_channel.mention}!")
+                await asyncio.sleep(5)
+                try:
+                    await confirmation.delete()
+                except Exception:
+                    pass
+        except discord.Forbidden:
+            error_msg = f"❌ I do not have permission to send messages in {target_channel.mention}."
+            if ctx.interaction:
+                await ctx.interaction.response.send_message(error_msg, ephemeral=True)
+            else:
+                await ctx.send(error_msg)
+# =========================================================
 # RUN BOT
 # =========================================================
 
