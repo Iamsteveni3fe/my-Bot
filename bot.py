@@ -1865,18 +1865,16 @@ async def poll(ctx, *, question: str):
 @bot.hybrid_command(name="say", description="Make the bot say something")
 @commands.has_permissions(manage_messages=True)
 async def say(ctx, *, message: str):
-    embed = discord.Embed(description=message, color=discord.Color.from_rgb(30, 31, 34))
     if ctx.interaction:
-        response_embed = discord.Embed(description="Message sent!", color=discord.Color.green())
-        await ctx.interaction.response.send_message(embed=response_embed, ephemeral=True)
-        await ctx.channel.send(embed=embed)
+        await ctx.interaction.response.send_message("Message sent!", ephemeral=True)
+        await ctx.channel.send(message)
     else:
         if ctx.message:
             try:
                 await ctx.message.delete()
             except Exception:
                 pass
-        await ctx.send(embed=embed)
+        await ctx.send(message)
 
 @bot.hybrid_command(name="embed", description="Send a custom embed message")
 @commands.has_permissions(manage_messages=True)
