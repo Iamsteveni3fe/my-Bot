@@ -215,7 +215,7 @@ async def on_message(message):
                 })
                 data = afk_users[member.id]
                 embed = discord.Embed(
-                    description=f"👋 **{member.display_name}** is AFK: {data['reason']} (<t:{int(data['time'])}:R>)",
+                    description=f"💤 **{member.display_name}** is AFK: {data['reason']} (<t:{int(data['time'])}:R>)",
                     color=discord.Color.from_rgb(30, 31, 34)
                 )
                 await message.channel.send(embed=embed)
