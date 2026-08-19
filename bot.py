@@ -3727,6 +3727,166 @@ async def backup_load(ctx, backup_id: str):
         await ctx.interaction.response.send_message(embed=embed, view=view, ephemeral=True)
     else:
         await ctx.send(embed=embed, view=view)
+        # =========================================================
+# DYNAMIC WELCOME BANNER GENERATOR & EVENT SYSTEM
+# =========================================================
+
+import io
+from PIL import Image, ImageDraw, ImageOps, ImageFont
+import discord
+from discord.ext import commands
+
+# Storage for welcomer channels and toggle status per guild
+welcomer_settings = {} # {guild_id: {"channel_id": int, "enabled": bool}}
+
+def generate_welcome_card(avatar_bytes, username, guild_name, member_count):
+    # Create dark banner matching your style
+    width, height = 700, 250
+    banner = Image.new("RGBA", (width, height), (15, 15, 15, 255))
+    draw = ImageDraw.Draw(banner)
+
+    # Draw border outline
+    draw.rectangle([10, 10, width - 10, height - 10], outline=(255, 255, 255, 255), width=3)
+
+    # Process user avatar into a circle
+    avatar_size = 150
+    avatar_img = Image.open(io.BytesIO(avatar_bytes)).convert("RGBA")
+    avatar_img = avatar_img.resize((avatar_size, avatar_size), Image.Resampling.LANCZOS)
+    
+    # Make circular mask
+    mask = Image.new("L", (avatar_size, avatar_size), 0)
+    mask_draw = ImageDraw.Draw(mask)
+    mask_draw.ellipse((0, 0, avatar_size, avatar_size), fill=255)
+    
+    # Apply circular mask and white border ring around avatar
+    circular_avatar = Image.new("RGBA", (avatar_size, avatar_size), (0, 0, 0, 0))
+    circular_avatar.paste(avatar_img, (0, 0), mask=mask)
+
+    ring_size = avatar_size + 10
+    ring = Image.new("RGBA", (ring_size, ring_size), (0, 0, 0, 0))
+    ring_draw = ImageDraw.Draw(ring)
+    ring_draw.ellipse((0, 0, ring_size, ring_size), fill=(255, 255, 255, 255))
+    
+    # Paste avatar inside white ring
+    ring.paste(circular_avatar, (5, 5), mask=circular_avatar)
+    
+    # Paste onto main banner at position (45, 50)
+    banner.paste(ring, (45, 50), mask=ring)
+
+    # Add text details
+    try:
+        font_large = ImageFont.truetype("arial.ttf", 24)
+        font_small = ImageFont.truetype("arial.ttf", 18)
+    except IOError:
+        font_large = ImageFont.load_default()
+        font_small = ImageFont.load_default()
+
+    text_x = 220
+    draw.text((text_x, 90), f"Welcome {username}", fill=(255, 255, 255, 255), font=font_large)
+    draw.text((text_x, 130), f"to {guild_name} server you are the {member_count}th member!", fill=(255, 255, 255, 255), font=font_small)
+
+    # Save to binary buffer
+    output = io.BytesIO()
+    banner.save(output, format="PNG")
+    output.seek(0)
+    return output
+
+
+# --- EVENTS ---
+
+@bot.event
+async def on_member_join(member):
+    guild_id = member.guild.id
+    settings = welcomer_settings.get(guild_id)
+    
+    if not settings or not settings.get("enabled"):
+        return
+
+    channel_id = settings.get("channel_id")
+    channel = member.guild.get_channel(channel_id)
+    if not channel:
+        return
+
+    try:
+        # Fetch user's avatar asset bytes
+        avatar_asset = member.avatar or member.default_avatar
+        avatar_bytes = await avatar_asset.read()
+        
+        # Generate card image
+        card_io = generate_welcome_card(
+            avatar_bytes=avatar_bytes,
+            username=member.name,
+            guild_name=member.guild.name,
+            member_count=member.guild.member_count
+        )
+
+        file = discord.File(card_io, filename="welcome.png")
+        await channel.send(file=file)
+    except Exception as e:
+        print(f"Failed to send welcome card: {e}")
+
+
+# --- COMMANDS ---
+
+@bot.hybrid_group(name="welcomer", description="Configure server welcome cards")
+async def welcomer(ctx):
+    if ctx.invoked_subcommand is None:
+        await ctx.send("Use `/welcomer enable`, `/welcomer setchannel`, or `/welcomer test`.", ephemeral=True)
+
+@welcomer.command(name="enable", description="Enable automated welcome cards for new members")
+async def welcomer_enable(ctx):
+    if ctx.author != ctx.guild.owner and ctx.author.id not in OWNER_IDS:
+        return await ctx.send("Only the server owner can configure the welcomer.", ephemeral=True)
+    
+    if ctx.guild.id not in welcomer_settings:
+        welcomer_settings[ctx.guild.id] = {"channel_id": ctx.channel.id, "enabled": True}
+    else:
+        welcomer_settings[ctx.guild.id]["enabled"] = True
+
+    await ctx.send("Enabled welcomer images. Run `/welcomer test` to see the message that is sent.", ephemeral=True)
+
+@welcomer.command(name="setchannel", description="Set the text channel where welcome cards are sent")
+async def welcomer_setchannel(ctx, channel: discord.TextChannel):
+    if ctx.author != ctx.guild.owner and ctx.author.id not in OWNER_IDS:
+        return await ctx.send("Only the server owner can configure the welcomer.", ephemeral=True)
+    
+    if ctx.guild.id not in welcomer_settings:
+        welcomer_settings[ctx.guild.id] = {"channel_id": channel.id, "enabled": True}
+    else:
+        welcomer_settings[ctx.guild.id]["channel_id"] = channel.id
+
+    await ctx.send(f"Set welcomer channel to: {channel.mention}. Run `/welcomer test` to see the message that is sent.", ephemeral=True)
+
+@welcomer.command(name="test", description="Test the welcome card layout using your own account")
+async def welcomer_test(ctx):
+    if ctx.interaction:
+        await ctx.interaction.response.defer(ephemeral=True)
+
+    try:
+        avatar_asset = ctx.author.avatar or ctx.author.default_avatar
+        avatar_bytes = await avatar_asset.read()
+
+        card_io = generate_welcome_card(
+            avatar_bytes=avatar_bytes,
+            username=ctx.author.name,
+            guild_name=ctx.guild.name,
+            member_count=ctx.guild.member_count
+        )
+
+        file = discord.File(card_io, filename="welcome.png")
+        
+        if ctx.interaction:
+            await ctx.interaction.followup.send("Executed successfully", ephemeral=True)
+            await ctx.channel.send(file=file)
+        else:
+            await ctx.send("Executed successfully")
+            await ctx.send(file=file)
+    except Exception as e:
+        err_msg = f"Error generating test card: {e}"
+        if ctx.interaction:
+            await ctx.interaction.followup.send(err_msg, ephemeral=True)
+        else:
+            await ctx.send(err_msg)
 # =========================================================
 # RUN BOT
 # =========================================================
